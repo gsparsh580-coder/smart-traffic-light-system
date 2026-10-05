@@ -1,0 +1,49 @@
+{
+  "scenarios": [
+    {
+      "id": "morning_rush",
+      "name": "Morning Commute Rush",
+      "description": "Heavy inbound traffic on Northbound (Lane 1) and Southbound (Lane 3).",
+      "lanes": {
+        "lane1": { "vehicle_count": 22, "distance_cm": 10 },
+        "lane2": { "vehicle_count": 4,  "distance_cm": 75 },
+        "lane3": { "vehicle_count": 18, "distance_cm": 15 },
+        "lane4": { "vehicle_count": 3,  "distance_cm": 80 }
+      }
+    },
+    {
+      "id": "evening_rush",
+      "name": "Evening Commute Rush",
+      "description": "Heavy outbound traffic on Eastbound (Lane 2) and Westbound (Lane 4).",
+      "lanes": {
+        "lane1": { "vehicle_count": 5,  "distance_cm": 70 },
+        "lane2": { "vehicle_count": 25, "distance_cm": 8 },
+        "lane3": { "vehicle_count": 6,  "distance_cm": 65 },
+        "lane4": { "vehicle_count": 20, "distance_cm": 12 }
+      }
+    },
+    {
+      "id": "emergency_ambulance",
+      "name": "Ambulance Priority Dispatch",
+      "description": "Emergency vehicle approaching on Lane 2 (Eastbound). Controller triggers preemption.",
+      "emergency_lane": 2,
+      "lanes": {
+        "lane1": { "vehicle_count": 10, "distance_cm": 45 },
+        "lane2": { "vehicle_count": 15, "distance_cm": 25 },
+        "lane3": { "vehicle_count": 8,  "distance_cm": 55 },
+        "lane4": { "vehicle_count": 9,  "distance_cm": 50 }
+      }
+    },
+    {
+      "id": "midnight_lull",
+      "name": "Midnight / Low Density",
+      "description": "Minimal sparse traffic across all lanes, system uses minimum green cycle times.",
+      "lanes": {
+        "lane1": { "vehicle_count": 1, "distance_cm": 95 },
+        "lane2": { "vehicle_count": 2, "distance_cm": 90 },
+        "lane3": { "vehicle_count": 0, "distance_cm": 100 },
+        "lane4": { "vehicle_count": 1, "distance_cm": 92 }
+      }
+    }
+  ]
+}

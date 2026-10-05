@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Traffic Light Control System - Cloud Dashboard</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- MQTT.js library for WebSockets -->
+  <script src="https://unpkg.com/mqtt@5.1.4/dist/mqtt.min.js"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-emerald-500 selection:text-white">
+
+  <!-- TOP NAVIGATION BAR -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50 px-4 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center space-x-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 text-slate-950 text-xl font-black">
+        <i class="fa-solid fa-traffic-light"></i>
+      </div>
+      <div>
+        <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+          Smart Traffic Light Control System
+          <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">v2.0 Live</span>
+        </h1>
+        <p class="text-xs text-slate-400">HiveMQ MQTT • Dual Mode (Synthetic & ESP32 Sensors) • Adaptive AI Timing</p>
+      </div>
+    </div>
+
+    <!-- CONNECTION STATUS & CONTROLS -->
+    <div class="flex items-center space-x-3 text-sm">
+      <div id="connectionStatusBadge" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-300">
+        <span class="relative flex h-2.5 w-2.5">
+          <span id="statusPing" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+          <span id="statusDot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+        </span>
+        <span id="statusText" class="text-xs font-mono font-medium">Connecting to HiveMQ...</span>
+      </div>
+
+      <button id="btnOpenSettings" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-1.5 text-slate-300 hover:text-white" title="Configure MQTT Broker & Topics">
+        <i class="fa-solid fa-gear"></i> Settings
+      </button>
+
+      <a href="https://github.com" target="_blank" id="repoLink" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20">
+        <i class="fa-brands fa-github"></i> GitHub Repo
+      </a>
+    </div>
+  </header>
+
+  <!-- EMERGENCY ALERT BANNER (HIDDEN BY DEFAULT) -->
+  <div id="emergencyBanner" class="hidden bg-gradient-to-r from-red-600 via-rose-600 to-red-600 text-white px-4 py-2.5 text-center font-bold text-sm tracking-wide shadow-lg shadow-red-900/40 animate-pulse flex items-center justify-center gap-3">
+    <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+    <span>PRIORITY OVERRIDE DETECTED: <span id="emergencyBannerText">EMERGENCY VEHICLE INBOUND ON LANE 1</span></span>
+    <button id="btnBannerClear" class="ml-4 px-2.5 py-1 text-xs bg-black/40 hover:bg-black/60 rounded border border-white/20 transition uppercase tracking-wider">
+      Dismiss / Resume
+    </button>
+  </div>
+
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl mx-auto px-4 lg:px-8 py-6 space-y-6">
+
+    <!-- TOP STATS ROW -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- Active Mode Card -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+        <div>
+          <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Telemetry Source</span>
+          <div id="statMode" class="text-lg font-bold text-teal-400 mt-1 flex items-center gap-2">
+            <i class="fa-solid fa-microchip"></i> <span>SYNTHETIC</span>
+          </div>
+          <span id="statSourceDetail" class="text-xs text-slate-500">Python Simulator</span>
+        </div>
+        <div class="flex flex-col gap-1">
+          <button id="btnSwitchModeSynthetic" class="px-2 py-1 text-xs font-semibold rounded bg-teal-500/20 border border-teal-500/40 text-teal-300 hover:bg-teal-500/30 transition">
+            Synthetic
+          </button>
+          <button id="btnSwitchModeReal" class="px-2 py-1 text-xs font-semibold rounded bg-slate-800 border border-slate-700 text-slate-400 hover:text-white transition">
+            ESP32 Sensor
+          </button>
+        </div>
+      </div>
+
+      <!-- Current Green Phase Card -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+        <div>
+          <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Active Green Phase</span>
+          <div id="statActiveLane" class="text-lg font-bold text-emerald-400 mt-1">
+            Lane 1 (North)
+          </div>
+          <span id="statPhaseState" class="text-xs text-emerald-400/80 font-mono">Status: GREEN</span>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-xl font-black">
+          1
+        </div>
+      </div>
+
+      <!-- Phase Countdown Card -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+        <div>
+          <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Phase Countdown</span>
+          <div class="text-2xl font-black font-mono text-white mt-1 flex items-baseline gap-1">
+            <span id="statCountdown">15</span>
+            <span class="text-xs font-normal text-slate-400">sec</span>
+          </div>
+          <div class="w-32 bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1.5">
+            <div id="statProgressBar" class="bg-emerald-500 h-full w-1/2 transition-all duration-300"></div>
+          </div>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 text-xl">
+          <i class="fa-solid fa-stopwatch"></i>
+        </div>
+      </div>
+
+      <!-- Total Intersection Vehicles -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+        <div>
+          <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Intersection Queue</span>
+          <div class="text-2xl font-black font-mono text-white mt-1 flex items-baseline gap-1">
+            <span id="statTotalVehicles">20</span>
+            <span class="text-xs font-normal text-slate-400">vehicles</span>
+          </div>
+          <span id="statWaitLevel" class="text-xs text-amber-400 font-medium">Moderate Flow</span>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 text-xl">
+          <i class="fa-solid fa-car-side"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN TWO COLUMN GRID -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- LEFT COLUMN: 4-WAY INTERSECTION CANVAS SIMULATION -->
+      <section class="lg:col-span-7 bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+        <div class="flex items-center justify-between border-b border-slate-800/80 pb-3 mb-4">
+          <div>
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-map-location-dot text-emerald-400"></i>
+              Real-Time 4-Way Intersection Monitor
+            </h2>
+            <p class="text-xs text-slate-400">Live animated traffic rendering synchronized with MQTT state</p>
+          </div>
+          <span class="text-xs font-mono text-slate-400 bg-slate-800/80 px-2.5 py-1 rounded-md border border-slate-700">
+            FPS: <span id="fpsCount">60</span>
+          </span>
+        </div>
+
+        <!-- Intersection Canvas Container -->
+        <div class="relative w-full aspect-square max-h-[500px] bg-slate-950 rounded-xl border border-slate-800/80 overflow-hidden flex items-center justify-center">
+          <canvas id="intersectionCanvas" width="600" height="600" class="w-full h-full object-contain"></canvas>
+          
+          <!-- Quick Canvas Legend -->
+          <div class="absolute bottom-2 left-2 bg-slate-900/90 backdrop-blur px-2.5 py-1.5 rounded-lg border border-slate-800 text-[10px] space-y-1 text-slate-300">
+            <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Green (Moving)</div>
+            <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400"></span> Yellow (Slow/Stop)</div>
+            <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-red-500"></span> Red (Queueing)</div>
+          </div>
+        </div>
+
+        <!-- Quick Manual Light Overrides -->
+        <div class="mt-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <span class="text-slate-400 font-medium">Quick Direct Control:</span>
+          <div class="flex items-center gap-2">
+            <button onclick="window.TrafficApp.forceLaneGreen(1)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 border border-slate-700 transition">Force L1</button>
+            <button onclick="window.TrafficApp.forceLaneGreen(2)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 border border-slate-700 transition">Force L2</button>
+            <button onclick="window.TrafficApp.forceLaneGreen(3)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 border border-slate-700 transition">Force L3</button>
+            <button onclick="window.TrafficApp.forceLaneGreen(4)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 border border-slate-700 transition">Force L4</button>
+            <button onclick="window.TrafficApp.forceAllRed()" class="px-2.5 py-1 bg-red-950/60 hover:bg-red-900/80 text-red-300 rounded border border-red-800/80 transition">All Red</button>
+            <button onclick="window.TrafficApp.resumeAuto()" class="px-2.5 py-1 bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 rounded border border-emerald-800/80 transition">Auto</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT COLUMN: 4 LANES TELEMETRY + CONTROLS -->
+      <section class="lg:col-span-5 space-y-6">
+
+        <!-- 4 LANES TELEMETRY CARDS -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <div class="flex items-center justify-between border-b border-slate-800/80 pb-3 mb-4">
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-road text-teal-400"></i>
+              Lane Densities & Ultrasonic Readings
+            </h2>
+            <span class="text-xs text-slate-400">4 Approaches</span>
+          </div>
+
+          <div class="space-y-3">
+            <!-- Lane 1 -->
+            <div id="laneCard1" class="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 transition-all">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="w-6 h-6 rounded bg-slate-800 text-white text-xs font-bold flex items-center justify-center">1</span>
+                  <span class="font-bold text-sm text-slate-200">Lane 1 (North)</span>
+                  <span id="lane1Badge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">GREEN</span>
+                </div>
+                <div class="text-xs text-slate-400 font-mono">
+                  <span id="lane1Dist">35</span> cm | <span id="lane1Cars" class="font-bold text-white">5</span> cars
+                </div>
+              </div>
+              <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                <div id="lane1Bar" class="bg-emerald-500 h-full w-[25%] transition-all duration-300"></div>
+              </div>
+            </div>
+
+            <!-- Lane 2 -->
+            <div id="laneCard2" class="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 transition-all">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="w-6 h-6 rounded bg-slate-800 text-white text-xs font-bold flex items-center justify-center">2</span>
+                  <span class="font-bold text-sm text-slate-200">Lane 2 (East)</span>
+                  <span id="lane2Badge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/30">RED</span>
+                </div>
+                <div class="text-xs text-slate-400 font-mono">
+                  <span id="lane2Dist">50</span> cm | <span id="lane2Cars" class="font-bold text-white">3</span> cars
+                </div>
+              </div>
+              <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                <div id="lane2Bar" class="bg-red-500 h-full w-[15%] transition-all duration-300"></div>
+              </div>
+            </div>
+
+            <!-- Lane 3 -->
+            <div id="laneCard3" class="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 transition-all">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="w-6 h-6 rounded bg-slate-800 text-white text-xs font-bold flex items-center justify-center">3</span>
+                  <span class="font-bold text-sm text-slate-200">Lane 3 (South)</span>
+                  <span id="lane3Badge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/30">RED</span>
+                </div>
+                <div class="text-xs text-slate-400 font-mono">
+                  <span id="lane3Dist">20</span> cm | <span id="lane3Cars" class="font-bold text-white">8</span> cars
+                </div>
+              </div>
+              <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                <div id="lane3Bar" class="bg-red-500 h-full w-[40%] transition-all duration-300"></div>
+              </div>
+            </div>
+
+            <!-- Lane 4 -->
+            <div id="laneCard4" class="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 transition-all">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="w-6 h-6 rounded bg-slate-800 text-white text-xs font-bold flex items-center justify-center">4</span>
+                  <span class="font-bold text-sm text-slate-200">Lane 4 (West)</span>
+                  <span id="lane4Badge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/30">RED</span>
+                </div>
+                <div class="text-xs text-slate-400 font-mono">
+                  <span id="lane4Dist">42</span> cm | <span id="lane4Cars" class="font-bold text-white">4</span> cars
+                </div>
+              </div>
+              <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                <div id="lane4Bar" class="bg-red-500 h-full w-[20%] transition-all duration-300"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- EMERGENCY VEHICLE PREEMPTION DISPATCH -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <div class="flex items-center justify-between border-b border-slate-800/80 pb-3 mb-4">
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-truck-medical text-rose-500"></i>
+              Emergency Vehicle Preemption
+            </h2>
+            <span class="text-xs text-rose-400 font-medium">Priority Override</span>
+          </div>
+
+          <p class="text-xs text-slate-400 mb-3">
+            Click any lane to simulate an approaching Ambulance or Fire Truck. The AI controller immediately grants green light preemption.
+          </p>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <button onclick="window.TrafficApp.triggerEmergency(1)" class="px-3 py-2.5 rounded-xl bg-rose-600/10 hover:bg-rose-600/20 border border-rose-500/30 hover:border-rose-500/60 text-rose-300 text-xs font-semibold flex items-center justify-center gap-2 transition">
+              <i class="fa-solid fa-truck-medical"></i> Priority Lane 1
+            </button>
+            <button onclick="window.TrafficApp.triggerEmergency(2)" class="px-3 py-2.5 rounded-xl bg-rose-600/10 hover:bg-rose-600/20 border border-rose-500/30 hover:border-rose-500/60 text-rose-300 text-xs font-semibold flex items-center justify-center gap-2 transition">
+              <i class="fa-solid fa-truck-medical"></i> Priority Lane 2
+            </button>
+            <button onclick="window.TrafficApp.triggerEmergency(3)" class="px-3 py-2.5 rounded-xl bg-rose-600/10 hover:bg-rose-600/20 border border-rose-500/30 hover:border-rose-500/60 text-rose-300 text-xs font-semibold flex items-center justify-center gap-2 transition">
+              <i class="fa-solid fa-truck-medical"></i> Priority Lane 3
+            </button>
+            <button onclick="window.TrafficApp.triggerEmergency(4)" class="px-3 py-2.5 rounded-xl bg-rose-600/10 hover:bg-rose-600/20 border border-rose-500/30 hover:border-rose-500/60 text-rose-300 text-xs font-semibold flex items-center justify-center gap-2 transition">
+              <i class="fa-solid fa-truck-medical"></i> Priority Lane 4
+            </button>
+          </div>
+
+          <button onclick="window.TrafficApp.clearEmergency()" class="w-full mt-2.5 px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center justify-center gap-2 transition">
+            <i class="fa-solid fa-check"></i> Clear Priority & Resume Adaptive Cycle
+          </button>
+        </div>
+
+        <!-- SIMULATION SCENARIO PRESETS -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <div class="flex items-center justify-between border-b border-slate-800/80 pb-3 mb-4">
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-sliders text-amber-400"></i>
+              Synthetic Traffic Presets
+            </h2>
+            <span class="text-xs text-slate-400">Test Scenarios</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 text-xs">
+            <button onclick="window.TrafficApp.applyPreset('morning')" class="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition text-center">
+              <i class="fa-solid fa-sun text-amber-400 mb-1 block text-sm"></i>
+              Morning Rush
+            </button>
+            <button onclick="window.TrafficApp.applyPreset('evening')" class="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition text-center">
+              <i class="fa-solid fa-moon text-indigo-400 mb-1 block text-sm"></i>
+              Evening Rush
+            </button>
+            <button onclick="window.TrafficApp.applyPreset('lull')" class="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition text-center">
+              <i class="fa-solid fa-leaf text-teal-400 mb-1 block text-sm"></i>
+              Midnight Lull
+            </button>
+          </div>
+        </div>
+
+      </section>
+    </div>
+
+    <!-- MQTT CONSOLE & LOGS -->
+    <section class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl">
+      <div class="flex items-center justify-between border-b border-slate-800/80 pb-3 mb-3">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-terminal text-emerald-400"></i>
+          <h3 class="text-sm font-bold text-white">Live MQTT Telemetry Stream (HiveMQ)</h3>
+          <span class="text-[11px] text-slate-500 font-mono" id="topicBaseDisplay">Topic: smart_traffic/demo/#</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btnClearLogs" class="text-xs text-slate-400 hover:text-slate-200 px-2 py-1 rounded bg-slate-800 border border-slate-700 transition">
+            Clear Logs
+          </button>
+        </div>
+      </div>
+      <div id="mqttLogContainer" class="h-32 bg-slate-950 rounded-xl p-3 font-mono text-xs text-slate-300 overflow-y-auto space-y-1 border border-slate-800/80">
+        <div class="text-slate-500 italic">[Waiting for MQTT packets...]</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL: SETTINGS -->
+  <div id="settingsModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="font-bold text-white text-base flex items-center gap-2">
+          <i class="fa-solid fa-gear text-emerald-400"></i> MQTT Broker & Connection Settings
+        </h3>
+        <button id="btnCloseSettings" class="text-slate-400 hover:text-white transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-sm">
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">WebSocket Broker URL / Host</label>
+          <input type="text" id="cfgBrokerHost" value="broker.hivemq.com" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-emerald-500">
+          <p class="text-[10px] text-slate-500 mt-1">Default: broker.hivemq.com (Port 8884 for WSS)</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">WSS Port</label>
+            <input type="number" id="cfgBrokerPort" value="8884" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-emerald-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Protocol Path</label>
+            <input type="text" id="cfgBrokerPath" value="/mqtt" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-emerald-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Base Topic Prefix</label>
+          <input type="text" id="cfgTopicPrefix" value="smart_traffic/demo" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-emerald-500">
+          <p class="text-[10px] text-slate-500 mt-1">Must match in ESP32, Python Simulator, and Node-RED</p>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-800 flex justify-end gap-2">
+        <button id="btnSaveSettings" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-md shadow-emerald-600/30 transition">
+          Save & Reconnect
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPLICATION JAVASCRIPT -->
+  <script src="js/app.js"></script>
+</body>
+</html>

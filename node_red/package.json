@@ -1,0 +1,13 @@
+{
+  "name": "smart-traffic-nodered",
+  "version": "1.0.0",
+  "description": "Smart Traffic Light System Dynamic Controller on Node-RED",
+  "main": "flows.json",
+  "scripts": {
+    "start": "node-red --userDir . flows.json"
+  },
+  "dependencies": {
+    "node-red": "^3.1.0",
+    "node-red-dashboard": "^3.6.5"
+  }
+}
